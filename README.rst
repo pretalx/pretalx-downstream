@@ -16,7 +16,9 @@ Development setup
 
 5. Execute ``make`` within this directory to compile translations.
 
-6. Restart your local pretalx server. You can now use the plugin from this repository for your events by enabling it in
+6. Run ``manage.py migrate`` to create tables for this plugin.
+
+7. Restart your local pretalx server. You can now use the plugin from this repository for your events by enabling it in
    the 'plugins' tab in the settings.
 
 

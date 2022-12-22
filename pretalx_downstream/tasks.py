@@ -95,7 +95,19 @@ def process_frab(root, event, release_new_version):
     changes = dict()
     for day in root.findall("day"):
         for rm in day.findall("room"):
-            room, _ = Room.objects.get_or_create(event=event, name=rm.attrib["name"])
+            room = None
+            if rm.attrib.get("guid"):
+                try:
+                    room = Room.objects.get(event=event, guid=rm.attrib["guid"])
+                    if room.name != rm.attrib["name"]:
+                        room.name = rm.attrib["name"]
+                        room.save()
+                except Room.DoesNotExist:
+                    pass
+
+            if room is None:
+                room, _ = Room.objects.get_or_create(event=event, name=rm.attrib["name"], guid=rm.attrib.get("guid"))
+
             for talk in rm.findall("event"):
                 changes.update(_create_talk(talk=talk, room=room, event=event))
 
@@ -138,7 +150,7 @@ def _get_changes(talk, optout, sub):
     change_tracking_data = {
         "title": talk.find("title").text,
         "do_not_record": optout,
-        "content_locale": talk.find("language").text or "en",
+        "content_locale": talk.find("language").text if talk.find("language") else "en",
     }
     for key in ("description", "abstract"):
         try:

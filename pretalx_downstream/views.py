@@ -11,7 +11,7 @@ from .tasks import task_refresh_upstream_schedule
 
 class UpstreamSettings(PermissionRequired, FormView):
     form_class = UpstreamSettingsForm
-    permission_required = "orga.change_settings"
+    permission_required = "event.change_settins_event"
     template_name = "pretalx_downstream/settings.html"
 
     def get_success_url(self):

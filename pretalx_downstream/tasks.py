@@ -50,7 +50,7 @@ def task_refresh_upstream_schedule(event_slug):
                 ).format(event_slug=event_slug, response=response.status_code)
             )
 
-        content = response.content.decode()
+        content = response.text
         last_result = event.upstream_results.order_by("timestamp").first()
         m = hashlib.sha256()
         m.update(response.content)

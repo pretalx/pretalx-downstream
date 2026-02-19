@@ -1,8 +1,8 @@
 pretalx as a downstream service
 ===============================
 
-.. image:: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/wiki/pretalx/pretalx-downstream/python-coverage-comment-action-badge.json
-   :target: https://github.com/pretalx/pretalx-downstream
+.. image:: https://raw.githubusercontent.com/pretalx/pretalx-downstream/python-coverage-comment-action-data/badge.svg
+   :target: https://htmlpreview.github.io/?https://github.com/pretalx/pretalx-downstream/blob/python-coverage-comment-action-data/htmlcov/index.html
    :alt: Coverage
 
 This is a plugin for `pretalx`_, allowing you to import external events that provide

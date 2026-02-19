@@ -1,9 +1,9 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django_scopes import scope
-from pretalx.event.models import Event
-
 from pretalx_downstream.tasks import task_refresh_upstream_schedule
+
+from pretalx.event.models import Event
 
 
 class Command(BaseCommand):

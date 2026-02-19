@@ -12,6 +12,7 @@ from django.db.utils import IntegrityError
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 from django_scopes import scope, scopes_disabled
+
 from pretalx.celery_app import app
 from pretalx.event.models import Event
 from pretalx.person.models import SpeakerProfile, User
@@ -33,7 +34,7 @@ def task_refresh_upstream_schedule(event_slug):
     with scopes_disabled():
         event = Event.objects.get(slug__iexact=event_slug)
     with scope(event=event):
-        logger.info(f"processing {event.slug}")
+        logger.info("processing %s", event.slug)
         url = event.settings.downstream_upstream_url
         if not url:
             raise Exception(
@@ -57,8 +58,8 @@ def task_refresh_upstream_schedule(event_slug):
         current_result = m.hexdigest()
 
         if last_result:
-            logger.debug(f"last known checksum: {last_result.checksum}")
-            logger.debug(f"checksum now: {current_result}")
+            logger.debug("last known checksum: %s", last_result.checksum)
+            logger.debug("checksum now: %s", current_result)
 
             if current_result == last_result.checksum:
                 event.settings.upstream_last_sync = now()
@@ -72,13 +73,13 @@ def task_refresh_upstream_schedule(event_slug):
                 event.settings.downstream_discard_after
             )[0]
 
-        logger.debug(f"Found schedule version '{schedule_version}'")
+        logger.debug("Found schedule version '%s'", schedule_version)
 
         release_new_version = (
             not event.current_schedule
             or schedule_version != event.current_schedule.version
         )
-        logger.debug(f"release_new_version={release_new_version}")
+        logger.debug("release_new_version=%s", release_new_version)
         changes, schedule = process_frab(
             root, event, release_new_version=release_new_version
         )
@@ -86,7 +87,7 @@ def task_refresh_upstream_schedule(event_slug):
             event=event, schedule=schedule, changes=json.dumps(changes), content=content
         )
         event.settings.upstream_last_sync = now()
-        logger.info(f"refreshed schedule of {event.slug}")
+        logger.info("refreshed schedule of %s", event.slug)
 
 
 @transaction.atomic()
@@ -95,7 +96,7 @@ def process_frab(root, event, release_new_version):
     data from the xml document.
     """
 
-    changes = dict()
+    changes = {}
     for day in root.findall("day"):
         for rm in day.findall("room"):
             guid = rm.attrib.get("guid")
@@ -125,7 +126,7 @@ def process_frab(root, event, release_new_version):
         except Exception as e:
             raise Exception(
                 f'Could not import "{event.name}" schedule version "{schedule_version}": {e}.'
-            )
+            ) from e
 
         schedule.talks.update(is_visible=True)
         start = schedule.talks.order_by("start").first().start
@@ -145,7 +146,7 @@ def _create_user(name, event):
 
 
 def _get_changes(talk, optout, sub, fallback_locale=None):
-    changes = dict()
+    changes = {}
     change_tracking_data = {
         "title": talk.find("title").text,
         "do_not_record": optout,
@@ -166,7 +167,7 @@ def _get_changes(talk, optout, sub, fallback_locale=None):
         ).strip()
 
     for key, value in change_tracking_data.items():
-        if not getattr(sub, key) == value:
+        if getattr(sub, key) != value:
             changes[key] = {"old": getattr(sub, key), "new": value}
             setattr(sub, key, value)
     return changes
@@ -230,7 +231,7 @@ def _create_talk(*, talk, room, event):
             defaults={"submission_type": sub_type, "state": SubmissionStates.CONFIRMED},
         )
     except IntegrityError:
-        new_code = f"{event.slug[:16 - len(code)]}{code}"
+        new_code = f"{event.slug[: 16 - len(code)]}{code}"
         sub, created = Submission.objects.get_or_create(
             event=event,
             code=new_code,
@@ -261,4 +262,4 @@ def _create_talk(*, talk, room, event):
     slot.save()
     if not created and changes:
         return {sub.code: changes}
-    return dict()
+    return {}

@@ -19,6 +19,18 @@ from pretalx_downstream.tasks import (
 
 SETTINGS_URL_NAME = "plugins:pretalx_downstream:settings"
 
+EMPTY_SCHEDULE_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<schedule>
+  <version>2.0</version>
+  <conference>
+    <title>Test Conference</title>
+    <start>2024-01-15</start>
+    <end>2024-01-17</end>
+  </conference>
+</schedule>
+"""
+
 SAMPLE_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <schedule>
@@ -380,3 +392,31 @@ def test_discard_after_setting(event):
     with scope(event=event):
         _, schedule = process_frab(root, event, release_new_version=True)
     assert schedule.version == "1.0"
+
+
+@pytest.mark.django_db
+def test_empty_schedule_does_not_crash(event):
+    original_date_from = event.date_from
+    original_date_to = event.date_to
+    root = ElementTree.fromstring(EMPTY_SCHEDULE_XML)
+    with scope(event=event):
+        _, schedule = process_frab(root, event, release_new_version=True)
+    assert schedule is not None
+    assert schedule.version == "2.0"
+    event.refresh_from_db()
+    assert event.date_from == original_date_from
+    assert event.date_to == original_date_to
+
+
+@pytest.mark.django_db
+def test_empty_then_full_schedule_recovers(event):
+    empty_root = ElementTree.fromstring(EMPTY_SCHEDULE_XML)
+    with scope(event=event):
+        process_frab(empty_root, event, release_new_version=True)
+        _, schedule = process_frab(
+            ElementTree.fromstring(SAMPLE_XML), event, release_new_version=True
+        )
+    assert schedule is not None
+    assert schedule.version == "1.0"
+    with scopes_disabled():
+        assert Submission.objects.filter(event=event, code="AAAAAA").exists()

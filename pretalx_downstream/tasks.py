@@ -129,11 +129,12 @@ def process_frab(root, event, release_new_version):
             ) from e
 
         schedule.talks.update(is_visible=True)
-        start = schedule.talks.order_by("start").first().start
-        end = schedule.talks.order_by("-end").first().end
-        event.date_from = start.date()
-        event.date_to = end.date()
-        event.save()
+        first_talk = schedule.talks.order_by("start").first()
+        last_talk = schedule.talks.order_by("-end").first()
+        if first_talk and last_talk:
+            event.date_from = first_talk.start.date()
+            event.date_to = last_talk.end.date()
+            event.save()
     return changes, schedule
 
 

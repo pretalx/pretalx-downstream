@@ -53,6 +53,7 @@ addopts = "--cov=pretalx_downstream --cov-report=term-missing:skip-covered --cov
 
 [tool.coverage.run]
 branch = true
+relative_files = true
 source = ["pretalx_downstream"]
 omit = ["*/migrations/*", "*/urls.py", "*/tests/*"]
 

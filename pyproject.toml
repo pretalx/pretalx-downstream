@@ -95,6 +95,7 @@ allowed-confusables = ["–", "'", "×"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**.py" = [
   "DTZ",     # TODO: do not use naive datetimes in tests
+  "INP001",  # Tests don't need __init__.py
   "RUF",     # Ignore ambiguous characters in tests, may be security tests
   "S",       # Tests do not need cryptographic randomness and other security features
   "S101",    # Ignore `assert` rules in tests

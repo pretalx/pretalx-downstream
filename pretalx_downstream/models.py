@@ -22,6 +22,9 @@ class UpstreamResult(models.Model):
 
     objects = ScopedManager(event="event")
 
+    def __str__(self):
+        return f"UpstreamResult for {self.event} at {self.timestamp}"
+
     @property
     def checksum(self):
         if not self.content:

@@ -3,9 +3,9 @@ import hashlib
 import json
 from contextlib import suppress
 from logging import getLogger
-from xml.etree import ElementTree
 
 import dateutil.parser
+import defusedxml.ElementTree
 import requests
 from django.db import transaction
 from django.db.utils import IntegrityError
@@ -16,7 +16,7 @@ from django_scopes import scope, scopes_disabled
 from pretalx.celery_app import app
 from pretalx.event.models import Event
 from pretalx.person.models import SpeakerProfile, User
-from pretalx.schedule.models import Room, TalkSlot
+from pretalx.schedule.models import Room, Schedule, TalkSlot
 from pretalx.submission.models import (
     Submission,
     SubmissionStates,
@@ -37,15 +37,15 @@ def task_refresh_upstream_schedule(event_slug):
         logger.info("processing %s", event.slug)
         url = event.settings.downstream_upstream_url
         if not url:
-            raise Exception(
+            raise RuntimeError(
                 _(
                     "The pretalx-downstream plugin is installed for {event_slug}, but no upstream URL was configured."
                 ).format(event_slug=event_slug)
             )
 
-        response = requests.get(url)
+        response = requests.get(url, timeout=30)
         if response.status_code != 200:
-            raise Exception(
+            raise RuntimeError(
                 _(
                     "Could not retrieve upstream schedule for {event_slug}, received {response} response."
                 ).format(event_slug=event_slug, response=response.status_code)
@@ -65,7 +65,7 @@ def task_refresh_upstream_schedule(event_slug):
                 event.settings.upstream_last_sync = now()
                 return
 
-        root = ElementTree.fromstring(content)
+        root = defusedxml.ElementTree.fromstring(content)
         schedule_version = root.find("version").text
 
         if event.settings.downstream_discard_after:
@@ -123,8 +123,8 @@ def process_frab(root, event, release_new_version):
         try:
             event.wip_schedule.freeze(schedule_version, notify_speakers=False)
             schedule = event.schedules.get(version=schedule_version)
-        except Exception as e:
-            raise Exception(
+        except (RuntimeError, Schedule.DoesNotExist) as e:
+            raise RuntimeError(
                 f'Could not import "{event.name}" schedule version "{schedule_version}": {e}.'
             ) from e
 
@@ -160,7 +160,7 @@ def _get_changes(talk, optout, sub, fallback_locale=None):
     for key in ("description", "abstract"):
         try:
             change_tracking_data[key] = talk.find(key).text
-        except Exception:
+        except AttributeError:
             change_tracking_data[key] = ""
     if talk.find("subtitle").text:
         change_tracking_data["description"] = (

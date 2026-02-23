@@ -5,9 +5,7 @@ from hierarkey.forms import HierarkeyForm
 
 class UpstreamSettingsForm(HierarkeyForm):
     downstream_upstream_url = URLField(
-        label=_("Upstream URL"),
-        help_text=_("URL of your schedule.xml"),
-        required=True,
+        label=_("Upstream URL"), help_text=_("URL of your schedule.xml"), required=True
     )
     downstream_interval = IntegerField(
         min_value=5, label=_("Interval"), help_text=_("Checking interval in minutes.")

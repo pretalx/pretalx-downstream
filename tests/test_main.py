@@ -1,11 +1,12 @@
 from io import StringIO
 from unittest.mock import MagicMock, patch
-from xml.etree import ElementTree
+from xml.etree import ElementTree as ET
 
 import pytest
 from django.core.management import call_command
 from django.urls import reverse
 from django_scopes import scope, scopes_disabled
+
 from pretalx.schedule.models import Room
 from pretalx.submission.models import Submission, Track
 
@@ -69,8 +70,7 @@ SAMPLE_XML = """\
 @pytest.mark.django_db
 def test_orga_can_access_settings(orga_client, event):
     response = orga_client.get(
-        reverse(SETTINGS_URL_NAME, kwargs={"event": event.slug}),
-        follow=True,
+        reverse(SETTINGS_URL_NAME, kwargs={"event": event.slug}), follow=True
     )
     assert response.status_code == 200
 
@@ -78,7 +78,7 @@ def test_orga_can_access_settings(orga_client, event):
 @pytest.mark.django_db
 def test_reviewer_cannot_access_settings(review_client, event):
     response = review_client.get(
-        reverse(SETTINGS_URL_NAME, kwargs={"event": event.slug}),
+        reverse(SETTINGS_URL_NAME, kwargs={"event": event.slug})
     )
     assert response.status_code == 404
 
@@ -157,7 +157,7 @@ def test_upstream_result_checksum_deterministic(event):
 
 @pytest.mark.django_db
 def test_process_frab_creates_submissions(event):
-    root = ElementTree.fromstring(SAMPLE_XML)
+    root = ET.fromstring(SAMPLE_XML)
     with scope(event=event):
         process_frab(root, event, release_new_version=False)
     with scopes_disabled():
@@ -168,7 +168,7 @@ def test_process_frab_creates_submissions(event):
 
 @pytest.mark.django_db
 def test_process_frab_creates_room(event):
-    root = ElementTree.fromstring(SAMPLE_XML)
+    root = ET.fromstring(SAMPLE_XML)
     with scope(event=event):
         process_frab(root, event, release_new_version=False)
     with scopes_disabled():
@@ -177,7 +177,7 @@ def test_process_frab_creates_room(event):
 
 @pytest.mark.django_db
 def test_process_frab_creates_track(event):
-    root = ElementTree.fromstring(SAMPLE_XML)
+    root = ET.fromstring(SAMPLE_XML)
     with scope(event=event):
         process_frab(root, event, release_new_version=False)
     with scopes_disabled():
@@ -186,7 +186,7 @@ def test_process_frab_creates_track(event):
 
 @pytest.mark.django_db
 def test_process_frab_release_new_version(event):
-    root = ElementTree.fromstring(SAMPLE_XML)
+    root = ET.fromstring(SAMPLE_XML)
     with scope(event=event):
         _, schedule = process_frab(root, event, release_new_version=True)
     assert schedule is not None
@@ -195,11 +195,11 @@ def test_process_frab_release_new_version(event):
 
 @pytest.mark.django_db
 def test_process_frab_detects_changes_on_reimport(event):
-    root = ElementTree.fromstring(SAMPLE_XML)
+    root = ET.fromstring(SAMPLE_XML)
     with scope(event=event):
         process_frab(root, event, release_new_version=False)
         modified_xml = SAMPLE_XML.replace("Opening Talk", "Updated Talk")
-        root2 = ElementTree.fromstring(modified_xml)
+        root2 = ET.fromstring(modified_xml)
         changes, _ = process_frab(root2, event, release_new_version=False)
     assert "AAAAAA" in changes
     assert "title" in changes["AAAAAA"]
@@ -223,7 +223,7 @@ def test_create_user_idempotent(event):
 
 @pytest.mark.django_db
 def test_task_no_url_raises(event):
-    with pytest.raises(Exception, match="no upstream URL"):
+    with pytest.raises(RuntimeError, match="no upstream URL"):
         task_refresh_upstream_schedule(event.slug)
 
 
@@ -234,7 +234,7 @@ def test_task_bad_response_raises(event):
     mock_response.status_code = 404
     with (
         patch("pretalx_downstream.tasks.requests.get", return_value=mock_response),
-        pytest.raises(Exception, match="Could not retrieve"),
+        pytest.raises(RuntimeError, match="Could not retrieve"),
     ):
         task_refresh_upstream_schedule(event.slug)
 
@@ -310,7 +310,7 @@ def test_room_with_guid(event):
         '<room name="Main Hall">',
         '<room name="Main Hall" guid="12345678-abcd-1234-abcd-123456789012">',
     )
-    root = ElementTree.fromstring(xml_with_guid)
+    root = ET.fromstring(xml_with_guid)
     with scope(event=event):
         process_frab(root, event, release_new_version=False)
     with scopes_disabled():
@@ -321,7 +321,7 @@ def test_room_with_guid(event):
 @pytest.mark.django_db
 def test_talk_with_recording_optout(event):
     xml_optout = SAMPLE_XML.replace("<optout>false</optout>", "<optout>true</optout>")
-    root = ElementTree.fromstring(xml_optout)
+    root = ET.fromstring(xml_optout)
     with scope(event=event):
         process_frab(root, event, release_new_version=False)
     with scopes_disabled():
@@ -334,7 +334,7 @@ def test_talk_with_subtitle(event):
     xml_subtitle = SAMPLE_XML.replace(
         "<subtitle></subtitle>", "<subtitle>A great subtitle</subtitle>"
     )
-    root = ElementTree.fromstring(xml_subtitle)
+    root = ET.fromstring(xml_subtitle)
     with scope(event=event):
         process_frab(root, event, release_new_version=False)
     with scopes_disabled():
@@ -388,7 +388,7 @@ def test_discard_after_setting(event):
     xml_versioned = SAMPLE_XML.replace(
         "<version>1.0</version>", "<version>1.0-beta1</version>"
     )
-    root = ElementTree.fromstring(xml_versioned)
+    root = ET.fromstring(xml_versioned)
     with scope(event=event):
         _, schedule = process_frab(root, event, release_new_version=True)
     assert schedule.version == "1.0"
@@ -398,7 +398,7 @@ def test_discard_after_setting(event):
 def test_empty_schedule_does_not_crash(event):
     original_date_from = event.date_from
     original_date_to = event.date_to
-    root = ElementTree.fromstring(EMPTY_SCHEDULE_XML)
+    root = ET.fromstring(EMPTY_SCHEDULE_XML)
     with scope(event=event):
         _, schedule = process_frab(root, event, release_new_version=True)
     assert schedule is not None
@@ -410,11 +410,11 @@ def test_empty_schedule_does_not_crash(event):
 
 @pytest.mark.django_db
 def test_empty_then_full_schedule_recovers(event):
-    empty_root = ElementTree.fromstring(EMPTY_SCHEDULE_XML)
+    empty_root = ET.fromstring(EMPTY_SCHEDULE_XML)
     with scope(event=event):
         process_frab(empty_root, event, release_new_version=True)
         _, schedule = process_frab(
-            ElementTree.fromstring(SAMPLE_XML), event, release_new_version=True
+            ET.fromstring(SAMPLE_XML), event, release_new_version=True
         )
     assert schedule is not None
     assert schedule.version == "1.0"

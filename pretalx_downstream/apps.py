@@ -1,5 +1,6 @@
 from django.apps import AppConfig
 from django.utils.translation import gettext_lazy
+
 from pretalx_downstream import __version__
 
 
@@ -17,7 +18,7 @@ class PluginApp(AppConfig):
         version = __version__
         category = "FEATURE"
         settings_links = [
-            (gettext_lazy("Settings"), "plugins:pretalx_downstream:settings", {}),
+            (gettext_lazy("Settings"), "plugins:pretalx_downstream:settings", {})
         ]
 
     def ready(self):

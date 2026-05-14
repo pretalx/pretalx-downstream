@@ -5,8 +5,7 @@ from contextlib import suppress
 from logging import getLogger
 
 import dateutil.parser
-import defusedxml.ElementTree
-import requests
+import urllib3
 from django.db import transaction
 from django.db.utils import IntegrityError
 from django.utils.timezone import now
@@ -43,18 +42,18 @@ def task_refresh_upstream_schedule(event_slug):
                 ).format(event_slug=event_slug)
             )
 
-        response = requests.get(url, timeout=30)
-        if response.status_code != 200:
+        response = urllib3.request("GET", url, timeout=30)
+        if response.status != 200:
             raise RuntimeError(
                 _(
                     "Could not retrieve upstream schedule for {event_slug}, received {response} response."
-                ).format(event_slug=event_slug, response=response.status_code)
+                ).format(event_slug=event_slug, response=response.status)
             )
 
-        content = response.text
+        content = response.data.decode("utf-8", errors="replace")
         last_result = event.upstream_results.order_by("timestamp").first()
         m = hashlib.sha256()
-        m.update(response.content)
+        m.update(response.data)
         current_result = m.hexdigest()
 
         if last_result:

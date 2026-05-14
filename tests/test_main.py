@@ -231,9 +231,9 @@ def test_task_no_url_raises(event):
 def test_task_bad_response_raises(event):
     event.settings.downstream_upstream_url = "https://example.com/schedule.xml"
     mock_response = MagicMock()
-    mock_response.status_code = 404
+    mock_response.status = 404
     with (
-        patch("pretalx_downstream.tasks.requests.get", return_value=mock_response),
+        patch("pretalx_downstream.tasks.urllib3.request", return_value=mock_response),
         pytest.raises(RuntimeError, match="Could not retrieve"),
     ):
         task_refresh_upstream_schedule(event.slug)
@@ -246,9 +246,8 @@ def test_task_skips_unchanged(event):
     UpstreamResult.objects.create(event=event, content=SAMPLE_XML)
 
     mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = SAMPLE_XML
-    mock_response.content = content
+    mock_response.status = 200
+    mock_response.data = content
 
     with patch("pretalx_downstream.tasks.requests.get", return_value=mock_response):
         task_refresh_upstream_schedule(event.slug)
@@ -263,9 +262,8 @@ def test_task_processes_new_schedule(event):
     content = SAMPLE_XML.encode()
 
     mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = SAMPLE_XML
-    mock_response.content = content
+    mock_response.status = 200
+    mock_response.data = content
 
     with patch("pretalx_downstream.tasks.requests.get", return_value=mock_response):
         task_refresh_upstream_schedule(event.slug)
@@ -284,12 +282,11 @@ def test_management_command(event, sync):
     content = SAMPLE_XML.encode()
 
     mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = SAMPLE_XML
-    mock_response.content = content
+    mock_response.status = 200
+    mock_response.data = content
 
     with (
-        patch("pretalx_downstream.tasks.requests.get", return_value=mock_response),
+        patch("pretalx_downstream.tasks.urllib3.request", return_value=mock_response),
         patch(
             "pretalx_downstream.tasks.task_refresh_upstream_schedule.apply_async"
         ) as mock_async,

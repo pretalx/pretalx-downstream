@@ -30,6 +30,12 @@ logger = getLogger("pretalx_downstream")
 
 @app.task(name="pretalx_downstream.refresh_upstream_schedule")
 def task_refresh_upstream_schedule(event_slug):
+    # signals.py top-imports this module, so anything we top-import here ends
+    # up running at app load (web process startup). defusedxml.ElementTree
+    # pulls in ~14 ms of XML machinery — keep it inline so it only loads when
+    # the celery task actually fires.
+    import defusedxml.ElementTree  # noqa: PLC0415 -- slow import
+
     with scopes_disabled():
         event = Event.objects.get(slug__iexact=event_slug)
     with scope(event=event):

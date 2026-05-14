@@ -4,6 +4,7 @@ import pytest
 from django.core import management
 from django_scopes import scopes_disabled
 
+from pretalx.event.domain.event import initialise_event
 from pretalx.event.models import Event, Organiser, Team
 from pretalx.person.models import User
 
@@ -43,6 +44,7 @@ def event(organiser):
             date_to=today + dt.timedelta(days=3),
             organiser=organiser,
         )
+        initialise_event(event)
         event.enable_plugin("pretalx_downstream")
         event.save()
         for team in organiser.teams.all():

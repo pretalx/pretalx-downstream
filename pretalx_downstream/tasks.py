@@ -15,6 +15,7 @@ from django_scopes import scope, scopes_disabled
 from pretalx.celery_app import app
 from pretalx.event.models import Event
 from pretalx.person.models import SpeakerProfile, User
+from pretalx.schedule.domain.release import freeze_schedule
 from pretalx.schedule.models import Room, Schedule, TalkSlot
 from pretalx.submission.models import (
     Submission,
@@ -126,7 +127,7 @@ def process_frab(root, event, release_new_version):
             )[0]
 
         try:
-            event.wip_schedule.freeze(schedule_version, notify_speakers=False)
+            freeze_schedule(event.wip_schedule, schedule_version, notify_speakers=False)
             schedule = event.schedules.get(version=schedule_version)
         except (RuntimeError, Schedule.DoesNotExist) as e:
             raise RuntimeError(

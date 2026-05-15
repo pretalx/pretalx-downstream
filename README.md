@@ -2,19 +2,19 @@
 
 [Full report](https://htmlpreview.github.io/?https://github.com/pretalx/pretalx-downstream/blob/python-coverage-comment-action-data/htmlcov/index.html)
 
-| Name                                                        |    Stmts |     Miss |   Branch |   BrPart |   Cover |   Missing |
-|------------------------------------------------------------ | -------: | -------: | -------: | -------: | ------: | --------: |
-| pretalx\_downstream/\_\_init\_\_.py                         |        1 |        0 |        0 |        0 |    100% |           |
-| pretalx\_downstream/apps.py                                 |       15 |        0 |        0 |        0 |    100% |           |
-| pretalx\_downstream/forms.py                                |       11 |        0 |        0 |        0 |    100% |           |
-| pretalx\_downstream/management/\_\_init\_\_.py              |        0 |        0 |        0 |        0 |    100% |           |
-| pretalx\_downstream/management/commands/\_\_init\_\_.py     |        0 |        0 |        0 |        0 |    100% |           |
-| pretalx\_downstream/management/commands/downstream\_pull.py |       19 |        0 |        2 |        0 |    100% |           |
-| pretalx\_downstream/models.py                               |       17 |        0 |        2 |        0 |    100% |           |
-| pretalx\_downstream/signals.py                              |       32 |        4 |       12 |        3 |     84% |26, 32, 36-37, 42-\>51 |
-| pretalx\_downstream/tasks.py                                |      155 |       11 |       52 |        8 |     90% |64-\>68, 72, 126-127, 163-164, 192, 199-\>210, 220-226, 234-236, 243-\>246, 250-\>256, 252-\>251 |
-| pretalx\_downstream/views.py                                |       37 |        2 |        4 |        0 |     95% |     34-35 |
-| **TOTAL**                                                   |  **287** |   **17** |   **72** |   **11** | **92%** |           |
+| Name                                                        |    Stmts |     Miss |   Branch |   BrPart |    Cover |   Missing |
+|------------------------------------------------------------ | -------: | -------: | -------: | -------: | -------: | --------: |
+| pretalx\_downstream/\_\_init\_\_.py                         |        1 |        0 |        0 |        0 |     100% |           |
+| pretalx\_downstream/apps.py                                 |       15 |        0 |        0 |        0 |     100% |           |
+| pretalx\_downstream/forms.py                                |       11 |        0 |        0 |        0 |     100% |           |
+| pretalx\_downstream/management/\_\_init\_\_.py              |        0 |        0 |        0 |        0 |     100% |           |
+| pretalx\_downstream/management/commands/\_\_init\_\_.py     |        0 |        0 |        0 |        0 |     100% |           |
+| pretalx\_downstream/management/commands/downstream\_pull.py |       19 |        0 |        2 |        0 |     100% |           |
+| pretalx\_downstream/models.py                               |       17 |        0 |        2 |        0 |     100% |           |
+| pretalx\_downstream/signals.py                              |       32 |        0 |       12 |        0 |     100% |           |
+| pretalx\_downstream/tasks.py                                |      151 |        0 |       48 |        0 |     100% |           |
+| pretalx\_downstream/views.py                                |       37 |        0 |        4 |        0 |     100% |           |
+| **TOTAL**                                                   |  **283** |    **0** |   **68** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge

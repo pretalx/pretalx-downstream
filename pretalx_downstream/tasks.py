@@ -217,19 +217,11 @@ def _create_talk(*, talk, room, event):
     with suppress(AttributeError):
         optout = talk.find("recording").find("optout").text == "true"
 
-    code = None
-    if (
-        Submission.objects.filter(code__iexact=talk.attrib["id"], event=event).exists()
-        or not Submission.objects.filter(code__iexact=talk.attrib["id"]).exists()
-    ):
-        code = talk.attrib["id"]
-    elif (
-        Submission.objects.filter(
-            code__iexact=talk.attrib["guid"][:16], event=event
-        ).exists()
-        or not Submission.objects.filter(code__iexact=talk.attrib["guid"][:16]).exists()
-    ):
-        code = talk.attrib["guid"][:16]
+    # django-scopes auto-scopes every Submission query to the active event, so
+    # we cannot detect a cross-event code collision up front; we just use the
+    # upstream id and let the global-unique constraint on Submission.code raise
+    # IntegrityError below, which we recover from with an event-prefixed code.
+    code = talk.attrib["id"]
 
     try:
         sub, created = Submission.objects.get_or_create(

@@ -1,14 +1,17 @@
+import datetime as dt
 from io import StringIO
 from unittest.mock import MagicMock, patch
 from xml.etree import ElementTree as ET
 
 import pytest
 from django.core.management import call_command
+from django.db.utils import IntegrityError
 from django.urls import reverse
+from django.utils.timezone import now
 from django_scopes import scope, scopes_disabled
 
 from pretalx.schedule.models import Room
-from pretalx.submission.models import Submission, Track
+from pretalx.submission.models import Submission, SubmissionType, Track
 
 from pretalx_downstream.models import UpstreamResult
 from pretalx_downstream.signals import refresh_upstream_schedule
@@ -249,7 +252,7 @@ def test_task_skips_unchanged(event):
     mock_response.status = 200
     mock_response.data = content
 
-    with patch("pretalx_downstream.tasks.requests.get", return_value=mock_response):
+    with patch("pretalx_downstream.tasks.urllib3.request", return_value=mock_response):
         task_refresh_upstream_schedule(event.slug)
 
     with scope(event=event):
@@ -265,7 +268,7 @@ def test_task_processes_new_schedule(event):
     mock_response.status = 200
     mock_response.data = content
 
-    with patch("pretalx_downstream.tasks.requests.get", return_value=mock_response):
+    with patch("pretalx_downstream.tasks.urllib3.request", return_value=mock_response):
         task_refresh_upstream_schedule(event.slug)
 
     with scope(event=event):
@@ -417,3 +420,220 @@ def test_empty_then_full_schedule_recovers(event):
     assert schedule.version == "1.0"
     with scopes_disabled():
         assert Submission.objects.filter(event=event, code="AAAAAA").exists()
+
+
+@pytest.mark.django_db
+def test_orga_trigger_refresh_handles_error(orga_client, event):
+    url = reverse(SETTINGS_URL_NAME, kwargs={"event": event.slug})
+    with patch("pretalx_downstream.views.task_refresh_upstream_schedule") as mock_task:
+        mock_task.apply_async.side_effect = RuntimeError("boom")
+        response = orga_client.post(
+            url,
+            {
+                "downstream_upstream_url": "https://example.com/schedule.xml",
+                "downstream_interval": "10",
+                "downstream_checking_time": "always",
+                "downstream_discard_after": "",
+                "action": "refresh",
+            },
+            follow=True,
+        )
+    assert response.status_code == 200
+    assert b"Failure when processing remote schedule" in response.content
+
+
+@pytest.mark.django_db
+def test_periodic_signal_skips_finished_event(event):
+    with scopes_disabled():
+        event.date_from = dt.date.today() - dt.timedelta(days=10)
+        event.date_to = dt.date.today() - dt.timedelta(days=8)
+        event.save()
+    event.settings.downstream_upstream_url = "https://example.com/schedule.xml"
+    event.settings.downstream_checking_time = "always"
+    with patch(
+        "pretalx_downstream.signals.task_refresh_upstream_schedule"
+    ) as mock_task:
+        mock_task.apply_async = MagicMock()
+        refresh_upstream_schedule(sender=None)
+    mock_task.apply_async.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_periodic_signal_skips_not_started_event(event):
+    with scopes_disabled():
+        event.date_from = dt.date.today() + dt.timedelta(days=10)
+        event.date_to = dt.date.today() + dt.timedelta(days=12)
+        event.save()
+    event.settings.downstream_upstream_url = "https://example.com/schedule.xml"
+    event.settings.downstream_checking_time = "event"
+    with patch(
+        "pretalx_downstream.signals.task_refresh_upstream_schedule"
+    ) as mock_task:
+        mock_task.apply_async = MagicMock()
+        refresh_upstream_schedule(sender=None)
+    mock_task.apply_async.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_periodic_signal_interval_typeerror_falls_back(event):
+    event.settings.downstream_upstream_url = "https://example.com/schedule.xml"
+    event.settings.downstream_checking_time = "always"
+    with (
+        patch("pretalx_downstream.signals.task_refresh_upstream_schedule") as mock_task,
+        patch("pretalx_downstream.signals.int", side_effect=TypeError),
+    ):
+        mock_task.apply_async = MagicMock()
+        refresh_upstream_schedule(sender=None)
+    mock_task.apply_async.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_periodic_signal_skips_when_recently_pulled(event):
+    event.settings.downstream_upstream_url = "https://example.com/schedule.xml"
+    event.settings.downstream_checking_time = "always"
+    event.settings.downstream_interval = 15
+    event.settings.upstream_last_sync = now().strftime("%Y-%m-%dT%H:%M:%S.%f%z")
+    with patch(
+        "pretalx_downstream.signals.task_refresh_upstream_schedule"
+    ) as mock_task:
+        mock_task.apply_async = MagicMock()
+        refresh_upstream_schedule(sender=None)
+    mock_task.apply_async.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_task_processes_changed_schedule(event):
+    event.settings.downstream_upstream_url = "https://example.com/schedule.xml"
+    UpstreamResult.objects.create(event=event, content="totally different content")
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.data = SAMPLE_XML.encode()
+    with patch("pretalx_downstream.tasks.urllib3.request", return_value=mock_response):
+        task_refresh_upstream_schedule(event.slug)
+    with scope(event=event):
+        assert event.upstream_results.count() == 2
+
+
+@pytest.mark.django_db
+def test_task_discard_after(event):
+    event.settings.downstream_upstream_url = "https://example.com/schedule.xml"
+    event.settings.downstream_discard_after = "-"
+    versioned = SAMPLE_XML.replace(
+        "<version>1.0</version>", "<version>1.0-beta1</version>"
+    )
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.data = versioned.encode()
+    with patch("pretalx_downstream.tasks.urllib3.request", return_value=mock_response):
+        task_refresh_upstream_schedule(event.slug)
+    with scope(event=event):
+        result = event.upstream_results.first()
+        assert result.schedule.version == "1.0"
+
+
+@pytest.mark.django_db
+def test_process_frab_freeze_failure(event):
+    root = ET.fromstring(SAMPLE_XML)
+    with (
+        scope(event=event),
+        patch(
+            "pretalx_downstream.tasks.freeze_schedule", side_effect=RuntimeError("nope")
+        ),
+        pytest.raises(RuntimeError, match="Could not import"),
+    ):
+        process_frab(root, event, release_new_version=True)
+
+
+@pytest.mark.django_db
+def test_process_frab_missing_abstract_and_description(event):
+    xml = SAMPLE_XML.replace("<abstract>An opening talk.</abstract>", "").replace(
+        "<description>Full description here.</description>", ""
+    )
+    root = ET.fromstring(xml)
+    with scope(event=event):
+        process_frab(root, event, release_new_version=False)
+    with scopes_disabled():
+        sub = Submission.objects.get(event=event, code="AAAAAA")
+        assert sub.abstract == ""
+        assert sub.description == ""
+
+
+@pytest.mark.django_db
+def test_process_frab_creates_submission_type(event):
+    xml = SAMPLE_XML.replace("<type>Talk</type>", "<type></type>")
+    root = ET.fromstring(xml)
+    with scope(event=event):
+        process_frab(root, event, release_new_version=False)
+    with scopes_disabled():
+        assert SubmissionType.objects.filter(event=event, name="default").exists()
+
+
+@pytest.mark.django_db
+def test_process_frab_without_track(event):
+    xml = SAMPLE_XML.replace("<track>General</track>", "<track></track>")
+    root = ET.fromstring(xml)
+    with scope(event=event):
+        process_frab(root, event, release_new_version=False)
+    with scopes_disabled():
+        sub = Submission.objects.get(event=event, code="AAAAAA")
+        assert sub.track is None
+
+
+@pytest.mark.django_db
+def test_process_frab_without_persons(event):
+    xml = SAMPLE_XML.replace(
+        """        <persons>
+          <person id="1">Alice Speaker</person>
+        </persons>
+""",
+        "",
+    )
+    root = ET.fromstring(xml)
+    with scope(event=event):
+        process_frab(root, event, release_new_version=False)
+    with scopes_disabled():
+        sub = Submission.objects.get(event=event, code="AAAAAA")
+        assert sub.speakers.count() == 0
+
+
+@pytest.mark.django_db
+def test_process_frab_skips_empty_person(event):
+    xml = SAMPLE_XML.replace(
+        '<person id="1">Alice Speaker</person>',
+        '<person id="1"></person>\n          <person id="2">Bob Speaker</person>',
+    )
+    root = ET.fromstring(xml)
+    with scope(event=event):
+        process_frab(root, event, release_new_version=False)
+    with scopes_disabled():
+        sub = Submission.objects.get(event=event, code="AAAAAA")
+        assert sub.speakers.count() == 1
+        assert sub.speakers.first().user.name == "Bob Speaker"
+
+
+@pytest.mark.django_db
+def test_process_frab_integrity_error_retries_with_new_code(event):
+    with scope(event=event):
+        fallback_type = SubmissionType.objects.create(
+            event=event, name="Fallback", default_duration=30
+        )
+        fallback_sub = Submission.objects.create(
+            event=event, code="ZZZZZZ", submission_type=fallback_type
+        )
+    calls = []
+
+    def fake_get_or_create(*args, **kwargs):
+        if not calls:
+            calls.append(1)
+            raise IntegrityError("duplicate")
+        return fallback_sub, True
+
+    root = ET.fromstring(SAMPLE_XML)
+    with (
+        scope(event=event),
+        patch.object(
+            Submission.objects, "get_or_create", side_effect=fake_get_or_create
+        ),
+    ):
+        process_frab(root, event, release_new_version=False)
+    assert len(calls) == 1

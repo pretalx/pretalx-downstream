@@ -10,11 +10,11 @@
 | pretalx\_downstream/management/\_\_init\_\_.py              |        0 |        0 |        0 |        0 |     100% |           |
 | pretalx\_downstream/management/commands/\_\_init\_\_.py     |        0 |        0 |        0 |        0 |     100% |           |
 | pretalx\_downstream/management/commands/downstream\_pull.py |       19 |        0 |        2 |        0 |     100% |           |
-| pretalx\_downstream/models.py                               |       17 |        0 |        2 |        0 |     100% |           |
+| pretalx\_downstream/models.py                               |       24 |        0 |        2 |        0 |     100% |           |
 | pretalx\_downstream/signals.py                              |       32 |        0 |       12 |        0 |     100% |           |
-| pretalx\_downstream/tasks.py                                |      151 |        0 |       48 |        0 |     100% |           |
+| pretalx\_downstream/tasks.py                                |      166 |        0 |       54 |        0 |     100% |           |
 | pretalx\_downstream/views.py                                |       37 |        0 |        4 |        0 |     100% |           |
-| **TOTAL**                                                   |  **283** |    **0** |   **68** |    **0** | **100%** |           |
+| **TOTAL**                                                   |  **305** |    **0** |   **74** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge

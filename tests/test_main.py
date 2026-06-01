@@ -1,25 +1,37 @@
 import datetime as dt
+import importlib
 from io import StringIO
 from unittest.mock import MagicMock, patch
 from xml.etree import ElementTree as ET
 
 import pytest
+from django.apps import apps
 from django.core.management import call_command
 from django.db.utils import IntegrityError
 from django.urls import reverse
 from django.utils.timezone import now
 from django_scopes import scope, scopes_disabled
 
-from pretalx.schedule.models import Room
-from pretalx.submission.models import Submission, SubmissionType, Track
+from pretalx.person.models import SpeakerProfile, User
+from pretalx.schedule.models import Room, Schedule, TalkSlot
+from pretalx.submission.models import (
+    Submission,
+    SubmissionStates,
+    SubmissionType,
+    Track,
+)
 
-from pretalx_downstream.models import UpstreamResult
+from pretalx_downstream.models import ImportedSubmission, UpstreamResult
 from pretalx_downstream.signals import refresh_upstream_schedule
 from pretalx_downstream.tasks import (
     _create_user,
     process_frab,
     task_refresh_upstream_schedule,
 )
+
+backfill_imported_submissions = importlib.import_module(
+    "pretalx_downstream.migrations.0002_importedsubmission"
+).backfill_imported_submissions
 
 SETTINGS_URL_NAME = "plugins:pretalx_downstream:settings"
 
@@ -612,21 +624,132 @@ def test_process_frab_skips_empty_person(event):
 
 
 @pytest.mark.django_db
-def test_process_frab_integrity_error_retries_with_new_code(event):
+def test_import_does_not_overwrite_organic_proposal(event):
     with scope(event=event):
-        fallback_type = SubmissionType.objects.create(
-            event=event, name="Fallback", default_duration=30
+        original_type = SubmissionType.objects.create(
+            event=event, name="Original Type", default_duration=45
         )
-        fallback_sub = Submission.objects.create(
-            event=event, code="ZZZZZZ", submission_type=fallback_type
+        speaker = User.objects.create_user(
+            email="real.speaker@example.org", name="Real Speaker", password="x"
         )
+        profile = SpeakerProfile.objects.create(user=speaker, event=event)
+        victim = Submission.objects.create(
+            event=event,
+            code="AAAAAA",
+            title="My Original Proposal",
+            abstract="My carefully written abstract.",
+            description="My original description.",
+            content_locale="en",
+            submission_type=original_type,
+            state=SubmissionStates.SUBMITTED,
+        )
+        victim.speakers.add(profile)
+
+    root = ET.fromstring(SAMPLE_XML)
+    with scope(event=event):
+        process_frab(root, event, release_new_version=False)
+
+    with scopes_disabled():
+        victim.refresh_from_db()
+        assert victim.title == "My Original Proposal"
+        assert victim.abstract == "My carefully written abstract."
+        assert victim.description == "My original description."
+        assert victim.state == SubmissionStates.SUBMITTED
+        assert victim.submission_type == original_type
+        assert list(victim.speakers.values_list("user__name", flat=True)) == [
+            "Real Speaker"
+        ]
+        assert not ImportedSubmission.objects.filter(submission=victim).exists()
+
+        imported = ImportedSubmission.objects.get(
+            event=event, upstream_id="AAAAAA"
+        ).submission
+        assert imported != victim
+        assert imported.code != "AAAAAA"
+        assert imported.title == "Opening Talk"
+
+
+@pytest.mark.django_db
+def test_reimport_updates_same_submission_via_mapping(event):
+    root = ET.fromstring(SAMPLE_XML)
+    with scope(event=event):
+        process_frab(root, event, release_new_version=False)
+        modified = SAMPLE_XML.replace("Opening Talk", "Updated Talk")
+        process_frab(ET.fromstring(modified), event, release_new_version=False)
+    with scopes_disabled():
+        assert Submission.objects.filter(event=event, code="AAAAAA").count() == 1
+        assert ImportedSubmission.objects.filter(event=event).count() == 1
+        sub = Submission.objects.get(event=event, code="AAAAAA")
+        assert sub.title == "Updated Talk"
+
+
+def _give_schedule_provenance(event, submission):
+    schedule = Schedule.objects.create(event=event, version="frozen-1")
+    room = Room.objects.create(event=event, name="Some Room")
+    TalkSlot.objects.create(submission=submission, schedule=schedule, room=room)
+    UpstreamResult.objects.create(event=event, schedule=schedule, content="prior feed")
+
+
+@pytest.mark.django_db
+def test_legacy_backfill_maps_scheduled_submission(event):
+    with scope(event=event):
+        original_type = SubmissionType.objects.create(
+            event=event, name="Original Type", default_duration=30
+        )
+        legacy = Submission.objects.create(
+            event=event,
+            code="AAAAAA",
+            title="Outdated upstream title",
+            submission_type=original_type,
+            state=SubmissionStates.CONFIRMED,
+        )
+        _give_schedule_provenance(event, legacy)
+
+    with scopes_disabled():
+        backfill_imported_submissions(apps, None)
+        assert ImportedSubmission.objects.filter(
+            event=event, upstream_id="AAAAAA", submission=legacy
+        ).exists()
+
+    root = ET.fromstring(SAMPLE_XML.replace("Opening Talk", "Updated Talk"))
+    with scope(event=event):
+        process_frab(root, event, release_new_version=False)
+
+    with scopes_disabled():
+        assert Submission.objects.filter(event=event, code="AAAAAA").count() == 1
+        legacy.refresh_from_db()
+        assert legacy.title == "Updated Talk"
+
+
+@pytest.mark.django_db
+def test_backfill_ignores_submission_without_schedule_provenance(event):
+    with scope(event=event):
+        original_type = SubmissionType.objects.create(
+            event=event, name="Original Type", default_duration=30
+        )
+        Submission.objects.create(
+            event=event,
+            code="AAAAAA",
+            title="Organic proposal",
+            submission_type=original_type,
+            state=SubmissionStates.SUBMITTED,
+        )
+
+    with scopes_disabled():
+        backfill_imported_submissions(apps, None)
+        assert not ImportedSubmission.objects.filter(event=event).exists()
+
+
+@pytest.mark.django_db
+def test_process_frab_integrity_error_falls_back_to_fresh_code(event):
     calls = []
+    real_get_or_create = Submission.objects.get_or_create
 
     def fake_get_or_create(*args, **kwargs):
         if not calls:
             calls.append(1)
             raise IntegrityError("duplicate")
-        return fallback_sub, True
+        return real_get_or_create(*args, **kwargs)
 
     root = ET.fromstring(SAMPLE_XML)
     with (
@@ -636,4 +759,26 @@ def test_process_frab_integrity_error_retries_with_new_code(event):
         ),
     ):
         process_frab(root, event, release_new_version=False)
+
     assert len(calls) == 1
+    with scopes_disabled():
+        imported = ImportedSubmission.objects.get(event=event, upstream_id="AAAAAA")
+        assert imported.submission.code != "AAAAAA"
+        assert imported.submission.title == "Opening Talk"
+
+
+@pytest.mark.django_db
+def test_process_frab_handles_oversized_upstream_id(event):
+    long_id = "X" * 40
+    xml = SAMPLE_XML.replace('id="AAAAAA"', f'id="{long_id}"')
+    root = ET.fromstring(xml)
+    with scope(event=event):
+        process_frab(root, event, release_new_version=False)
+
+    with scopes_disabled():
+        mapping = ImportedSubmission.objects.get(event=event, upstream_id=long_id)
+        assert len(mapping.submission.code) <= 16
+        assert mapping.submission.title == "Opening Talk"
+        with scope(event=event):
+            process_frab(ET.fromstring(xml), event, release_new_version=False)
+        assert Submission.objects.filter(event=event, title="Opening Talk").count() == 1

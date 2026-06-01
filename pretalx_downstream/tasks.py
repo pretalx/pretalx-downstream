@@ -24,7 +24,7 @@ from pretalx.submission.models import (
     Track,
 )
 
-from .models import UpstreamResult
+from .models import ImportedSubmission, UpstreamResult
 
 logger = getLogger("pretalx_downstream")
 
@@ -180,6 +180,45 @@ def _get_changes(talk, optout, sub, fallback_locale=None):
     return changes
 
 
+def _create_unused_submission(event, code, defaults, taken):
+    if not taken and len(code) <= 16:
+        try:
+            sub, created = Submission.objects.get_or_create(
+                event=event, code=code, defaults=defaults
+            )
+        except IntegrityError:
+            created = False
+        if created:
+            return sub
+
+    return Submission.objects.create(event=event, **defaults)
+
+
+def _get_or_create_submission(*, event, upstream_id, sub_type):
+    defaults = {"submission_type": sub_type, "state": SubmissionStates.CONFIRMED}
+
+    mapping = ImportedSubmission.objects.filter(
+        event=event, upstream_id=upstream_id
+    ).first()
+    if mapping:
+        return mapping.submission, False
+
+    existing = Submission.objects.filter(event=event, code=upstream_id).first()
+
+    try:
+        with transaction.atomic():
+            sub = _create_unused_submission(
+                event, upstream_id, defaults, taken=existing is not None
+            )
+            ImportedSubmission.objects.create(
+                event=event, upstream_id=upstream_id, submission=sub
+            )
+    except IntegrityError:  # pragma: no cover -- race condition
+        mapping = ImportedSubmission.objects.get(event=event, upstream_id=upstream_id)
+        return mapping.submission, False
+    return sub, True
+
+
 def _create_talk(*, talk, room, event):
     date = talk.find("date").text
     start = dateutil.parser.parse(date + " " + talk.find("start").text)
@@ -217,25 +256,9 @@ def _create_talk(*, talk, room, event):
     with suppress(AttributeError):
         optout = talk.find("recording").find("optout").text == "true"
 
-    # django-scopes auto-scopes every Submission query to the active event, so
-    # we cannot detect a cross-event code collision up front; we just use the
-    # upstream id and let the global-unique constraint on Submission.code raise
-    # IntegrityError below, which we recover from with an event-prefixed code.
-    code = talk.attrib["id"]
-
-    try:
-        sub, created = Submission.objects.get_or_create(
-            event=event,
-            code=code,
-            defaults={"submission_type": sub_type, "state": SubmissionStates.CONFIRMED},
-        )
-    except IntegrityError:
-        new_code = f"{event.slug[: 16 - len(code)]}{code}"
-        sub, created = Submission.objects.get_or_create(
-            event=event,
-            code=new_code,
-            defaults={"submission_type": sub_type, "state": SubmissionStates.CONFIRMED},
-        )
+    sub, created = _get_or_create_submission(
+        event=event, upstream_id=talk.attrib["id"], sub_type=sub_type
+    )
 
     sub.submission_type = sub_type
     if track:

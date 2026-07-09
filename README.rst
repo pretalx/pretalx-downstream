@@ -1,15 +1,29 @@
 pretalx as a downstream service
 ===============================
 
-.. image:: https://raw.githubusercontent.com/pretalx/pretalx-downstream/python-coverage-comment-action-data/badge.svg
-   :target: https://htmlpreview.github.io/?https://github.com/pretalx/pretalx-downstream/blob/python-coverage-comment-action-data/htmlcov/index.html
-   :alt: Coverage
+.. image:: https://img.shields.io/pypi/v/pretalx-downstream.svg
+   :target: https://pypi.org/project/pretalx-downstream/
+   :alt: PyPI version
 
 This is a plugin for `pretalx`_, allowing you to import external events that provide
 their schedule in the `frab XML <https://github.com/frab/schedule.xml>`_ format.
 
 It comes with several settings regulating pull interval and policies, as well as
 a manage command at ``downstream_pull --event my_event [--sync]``.
+
+Installation
+------------
+
+Install the plugin with pip, in the same environment as your pretalx
+installation::
+
+    (env)$ python -m pip install pretalx-downstream
+
+Afterwards, run ``migrate`` and ``rebuild`` and restart your pretalx services,
+just like after any pretalx update (see `performing updates`_ in the
+administrator documentation).
+
+You can then enable the plugin under "Settings → Plugins" in your event settings.
 
 Development setup
 -----------------
@@ -68,3 +82,4 @@ Released under the terms of the Apache License 2.0
 .. _pretalx development setup: https://docs.pretalx.org/en/latest/developer/setup.html
 .. _just: https://just.systems/
 .. _uv: https://docs.astral.sh/uv/
+.. _performing updates: https://docs.pretalx.org/administrator/maintenance/#performing-updates

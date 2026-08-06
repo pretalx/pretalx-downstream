@@ -2,7 +2,7 @@
 {% load i18n %}
 {% load tz %}
 {% block content %}
-    <h2>{% trans "Set up upstream sync" %}</h2>
+    <h2 class="page-heading">{% trans "Set up upstream sync" %}</h2>
     <form method="post">
         {% csrf_token %}
         {{ form }}

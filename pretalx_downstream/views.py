@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import FormView
 
+from pretalx.common.ui import Button
 from pretalx.common.views.mixins import PermissionRequired
 
 from .forms import UpstreamSettingsForm
@@ -49,4 +50,16 @@ class UpstreamSettings(PermissionRequired, FormView):
         last_pulled = self.request.event.settings.upstream_last_sync
         if last_pulled:
             last_pulled = dt.datetime.strptime(last_pulled, "%Y-%m-%dT%H:%M:%S.%f%z")
-        return {"last_pulled": last_pulled, **kwargs}
+        return {
+            "last_pulled": last_pulled,
+            "submit_buttons": [
+                Button(name="action", value="save"),
+                Button(
+                    name="action",
+                    value="refresh",
+                    label=_("Check for new talks"),
+                    color="secondary",
+                ),
+            ],
+            **kwargs,
+        }

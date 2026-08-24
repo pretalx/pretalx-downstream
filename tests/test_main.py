@@ -12,6 +12,7 @@ from django.urls import reverse
 from django.utils.timezone import now
 from django_scopes import scope, scopes_disabled
 
+from pretalx.person.enums import EmailVerificationState
 from pretalx.person.models import SpeakerProfile, User
 from pretalx.schedule.models import Room, Schedule, TalkSlot
 from pretalx.submission.models import (
@@ -630,7 +631,10 @@ def test_import_does_not_overwrite_organic_proposal(event):
             event=event, name="Original Type", default_duration=45
         )
         speaker = User.objects.create_user(
-            email="real.speaker@example.org", name="Real Speaker", password="x"
+            email="real.speaker@example.org",
+            name="Real Speaker",
+            password="x",
+            email_verification_state=EmailVerificationState.VERIFIED,
         )
         profile = SpeakerProfile.objects.create(user=speaker, event=event)
         victim = Submission.objects.create(

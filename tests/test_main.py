@@ -286,7 +286,7 @@ def test_task_processes_new_schedule(event):
 
     with scope(event=event):
         assert event.upstream_results.count() == 1
-        result = event.upstream_results.first()
+        result = event.upstream_results.select_related("schedule").first()
         assert result.schedule is not None
         assert result.schedule.version == "1.0"
 
@@ -540,7 +540,7 @@ def test_task_discard_after(event):
     with patch("pretalx_downstream.tasks.urllib3.request", return_value=mock_response):
         task_refresh_upstream_schedule(event.slug)
     with scope(event=event):
-        result = event.upstream_results.first()
+        result = event.upstream_results.select_related("schedule").first()
         assert result.schedule.version == "1.0"
 
 
@@ -621,7 +621,7 @@ def test_process_frab_skips_empty_person(event):
     with scopes_disabled():
         sub = Submission.objects.get(event=event, code="AAAAAA")
         assert sub.speakers.count() == 1
-        assert sub.speakers.first().user.name == "Bob Speaker"
+        assert sub.speakers.select_related("user").first().user.name == "Bob Speaker"
 
 
 @pytest.mark.django_db
@@ -659,7 +659,7 @@ def test_import_does_not_overwrite_organic_proposal(event):
         assert victim.abstract == "My carefully written abstract."
         assert victim.description == "My original description."
         assert victim.state == SubmissionStates.SUBMITTED
-        assert victim.submission_type == original_type
+        assert victim.submission_type_id == original_type.pk
         assert list(victim.speakers.values_list("user__name", flat=True)) == [
             "Real Speaker"
         ]

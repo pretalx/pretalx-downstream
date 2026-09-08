@@ -17,7 +17,10 @@ hierarkey.add_default("downstream_checking_time", "event")
 @receiver(periodic_task)
 def refresh_upstream_schedule(sender, request=None, **kwargs):
     _now = now()
-    for event in Event.objects.all():
+    events = Event.objects.with_plugin("pretalx_downstream").filter(
+        date_to__gte=_now.date() - dt.timedelta(days=30)
+    )
+    for event in events:
         with scope(event=event):
             if not event.settings.downstream_upstream_url:
                 continue

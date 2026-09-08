@@ -381,6 +381,21 @@ def test_periodic_signal_skips_event_without_url(event):
 
 
 @pytest.mark.django_db
+def test_periodic_signal_skips_event_without_plugin(event):
+    with scopes_disabled():
+        event.plugins = "pretalx_downstream_other"
+        event.save()
+    event.settings.downstream_upstream_url = "https://example.com/schedule.xml"
+    event.settings.downstream_checking_time = "always"
+    with patch(
+        "pretalx_downstream.signals.task_refresh_upstream_schedule"
+    ) as mock_task:
+        mock_task.apply_async = MagicMock()
+        refresh_upstream_schedule(sender=None)
+    mock_task.apply_async.assert_not_called()
+
+
+@pytest.mark.django_db
 def test_periodic_signal_cleans_old_results(event):
     event.settings.downstream_upstream_url = "https://example.com/schedule.xml"
     event.settings.downstream_checking_time = "always"

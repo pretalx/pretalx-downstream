@@ -12,6 +12,9 @@ from django.urls import reverse
 from django.utils.timezone import now
 from django_scopes import scope, scopes_disabled
 
+from pretalx.event.domain.event import copy_event_data, initialise_event
+from pretalx.event.domain.plugins import enable_plugin
+from pretalx.event.models import Event
 from pretalx.person.enums import EmailVerificationState
 from pretalx.person.models import SpeakerProfile, User
 from pretalx.schedule.models import Room, Schedule, TalkSlot
@@ -801,3 +804,32 @@ def test_process_frab_handles_oversized_upstream_id(event):
         with scope(event=event):
             process_frab(ET.fromstring(xml), event, release_new_version=False)
         assert Submission.objects.filter(event=event, title="Opening Talk").count() == 1
+
+
+def _copied_event(event, plugin):
+    with scopes_disabled():
+        new_event = Event.objects.create(
+            name="Copied event",
+            slug="copied",
+            email="orga@orga.org",
+            date_from=event.date_from + dt.timedelta(days=7),
+            date_to=event.date_to + dt.timedelta(days=7),
+            organiser=event.organiser,
+        )
+        initialise_event(new_event)
+        enable_plugin(new_event, plugin)
+        copy_event_data(event=new_event, source=event)
+    return new_event
+
+
+@pytest.mark.django_db
+def test_event_copy_keeps_upstream_url_but_clears_sync_state(event):
+    event.settings.downstream_upstream_url = "https://upstream.example.org/schedule.xml"
+    event.settings.upstream_last_sync = now().strftime("%Y-%m-%dT%H:%M:%S.%f%z")
+    new_event = _copied_event(event, "pretalx_downstream")
+    assert (
+        new_event.settings.downstream_upstream_url
+        == "https://upstream.example.org/schedule.xml"
+    )
+    assert new_event.settings.upstream_last_sync is None
+    assert event.settings.upstream_last_sync

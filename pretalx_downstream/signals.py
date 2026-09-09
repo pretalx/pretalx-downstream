@@ -7,6 +7,7 @@ from django_scopes import scope
 from pretalx.common.models.settings import hierarkey
 from pretalx.common.signals import periodic_task
 from pretalx.event.models import Event
+from pretalx.orga.signals import event_copy_data
 
 from .tasks import task_refresh_upstream_schedule
 
@@ -56,3 +57,8 @@ def refresh_upstream_schedule(sender, request=None, **kwargs):
                 event.upstream_results.filter(
                     timestamp__lt=latest_three[-1].timestamp
                 ).delete()
+
+
+@receiver(event_copy_data, dispatch_uid="downstream_copy_data")
+def clear_copied_sync_state(sender, **kwargs):
+    sender.settings.delete("upstream_last_sync")
